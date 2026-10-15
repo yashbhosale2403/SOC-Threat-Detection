@@ -6,6 +6,8 @@ Purpose: Handles dashboard page serving, real-time analytics aggregation,
 """
 
 from django.shortcuts import render, get_object_or_404
+from django.conf import settings
+from functools import wraps
 from django.db.models import Count, Avg
 from django.utils import timezone
 from datetime import timedelta
@@ -28,6 +30,21 @@ from core.engine.responder import IncidentResponder
 from core.engine.threat_intel import seed_threat_intel
 from core.engine.rules import seed_default_rules
 from core.engine.ai_assistant import GeminiAIAssistant
+
+def staff_only_for_public_demo(view_func):
+    """Disable state-changing analyst actions for unauthenticated public demo users."""
+    @wraps(view_func)
+    def wrapped(self, request, *args, **kwargs):
+        demo_mode = getattr(settings, "DEMO_MODE", True)
+        is_staff = request.user.is_authenticated and request.user.is_staff
+        if demo_mode and not is_staff:
+            return Response(
+                {"detail": "This state-changing action is disabled in the public demo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return view_func(self, request, *args, **kwargs)
+    return wrapped
+
 
 
 def dashboard_page(request):
@@ -87,6 +104,7 @@ class IngestLogAPIView(APIView):
     """
     Accepts raw or structured log data via HTTP POST and pushes through the pipeline.
     """
+    @staff_only_for_public_demo
     def post(self, request):
         raw_log = request.data.get('raw_log')
         source_type = request.data.get('source', 'auto')
@@ -131,6 +149,8 @@ class IncidentDetailAPIView(APIView):
         serializer = IncidentSerializer(inc)
         return Response(serializer.data)
 
+    @staff_only_for_public_demo
+
     def patch(self, request, incident_id):
         inc = get_object_or_404(Incident, incident_id=incident_id)
         new_status = request.data.get('status')
@@ -151,6 +171,7 @@ class IncidentRespondAPIView(APIView):
     """
     Executes or rejects an incident containment action.
     """
+    @staff_only_for_public_demo
     def post(self, request, response_id):
         action_intent = request.data.get('intent', 'approve')
         analyst_name = request.data.get('analyst_name', 'Security Analyst')
@@ -274,6 +295,8 @@ class RulesAPIView(APIView):
         serializer = DetectionRuleSerializer(rules, many=True)
         return Response(serializer.data)
 
+    @staff_only_for_public_demo
+
     def post(self, request):
         data = request.data
         name = data.get('name', '').strip()
@@ -309,6 +332,7 @@ class RuleDetailAPIView(APIView):
     """
     Toggles or deletes a detection rule.
     """
+    @staff_only_for_public_demo
     def patch(self, request, rule_id):
         rule = get_object_or_404(DetectionRule, rule_id=rule_id)
         is_enabled = request.data.get('is_enabled')
@@ -316,6 +340,8 @@ class RuleDetailAPIView(APIView):
             rule.is_enabled = bool(is_enabled)
             rule.save()
         return Response(DetectionRuleSerializer(rule).data)
+
+    @staff_only_for_public_demo
 
     def delete(self, request, rule_id):
         rule = get_object_or_404(DetectionRule, rule_id=rule_id)
@@ -329,6 +355,7 @@ class IncidentContainDirectAPIView(APIView):
     """
     Directly enforces containment / blocking on an incident.
     """
+    @staff_only_for_public_demo
     def post(self, request, incident_id):
         analyst_name = request.data.get('analyst_name', 'Yash (SOC Analyst)')
         result = IncidentResponder.contain_incident(incident_id, analyst_name)
@@ -339,6 +366,7 @@ class IncidentAllowDirectAPIView(APIView):
     """
     Directly enforces traffic authorization / whitelist on an incident.
     """
+    @staff_only_for_public_demo
     def post(self, request, incident_id):
         analyst_name = request.data.get('analyst_name', 'Yash (SOC Analyst)')
         result = IncidentResponder.allow_incident(incident_id, analyst_name)
@@ -352,6 +380,7 @@ class ResetSOCAPIView(APIView):
     - Clears all response actions, incidents, alerts, and log events (0 traffic)
     - Re-seeds threat intel IOCs and baseline detection rules
     """
+    @staff_only_for_public_demo
     def post(self, request):
         ResponseAction.objects.all().delete()
         Incident.objects.all().delete()
