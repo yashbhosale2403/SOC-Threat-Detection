@@ -5,16 +5,16 @@ Production-sensitive values are supplied through environment variables.
 """
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Never rely on the committed development key in a deployed environment.
-SECRET_KEY = os.environ.get(
-    "SECRET_KEY",
-    "django-insecure-development-only-change-me-before-deployment",
-)
-
-DEBUG = os.environ.get("DEBUG", "True").strip().lower() in {"1", "true", "yes"}
+DEBUG = os.environ.get("DEBUG", "False").strip().lower() in {"1", "true", "yes"}
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY and DEBUG:
+    SECRET_KEY = "local-development-only-not-for-production"
+if not SECRET_KEY:
+    raise ImproperlyConfigured("Set SECRET_KEY in the environment before starting Django.")
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -61,6 +61,7 @@ TEMPLATES = [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.static",
                 "django.contrib.messages.context_processors.messages",
             ],
         },
@@ -69,8 +70,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "cybersentinel.wsgi.application"
 
-# Render's free web instances have an ephemeral filesystem. Use SQLITE_PATH
-# to keep the demo database separate from the SQLite file committed for local use.
+# Render's free web instances have an ephemeral filesystem. For a demo, SQLite
+# can be placed in /tmp; use PostgreSQL for durable production data.
 SQLITE_PATH = os.environ.get("SQLITE_PATH")
 DATABASES = {
     "default": {
