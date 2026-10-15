@@ -10,6 +10,7 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.environ.get("DEBUG", "False").strip().lower() in {"1", "true", "yes"}
+DEMO_MODE = os.environ.get("DEMO_MODE", "True").strip().lower() in {"1", "true", "yes"}
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY and DEBUG:
     SECRET_KEY = "local-development-only-not-for-production"
